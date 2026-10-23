@@ -164,6 +164,24 @@ test("Dockerfile major-only tag is a warning, full pin is clean", () => {
   assert.equal(run(cleanDir).status, 0);
 });
 
+test("FROM --platform flag is parsed, image is still checked", () => {
+  const dir = tmpProject({
+    "package.json": CLEAN_PKG,
+    Dockerfile: "FROM --platform=linux/amd64 node:22-alpine\n",
+  });
+  const r = run(dir);
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.match(r.stdout, /Summary: 0 error\(s\), 0 warning\(s\)/);
+  const badDir = tmpProject({
+    "package.json": CLEAN_PKG,
+    Dockerfile: "FROM --platform=linux/amd64 node:latest\n",
+  });
+  const rb = run(badDir);
+  assert.equal(rb.status, 1);
+  assert.match(rb.stdout, /unpinned-base/);
+  assert.match(rb.stdout, /node:latest/);
+});
+
 test("pull_request_target is a warning, not an error", () => {
   const dir = tmpProject({
     "package.json": CLEAN_PKG,
