@@ -368,9 +368,14 @@ function checkWorkflow(root, file, findings) {
 function checkDockerfile(root, file, findings) {
   const lines = fs.readFileSync(file, "utf8").split("\n");
   lines.forEach((raw, i) => {
-    const m = raw.match(/^\s*FROM\s+(\S+)/i);
+    const m = raw.match(/^\s*FROM\s+(.+)$/i);
     if (!m) return;
-    const image = m[1];
+    // FROM can carry build flags before the image, e.g.
+    // "FROM --platform=linux/amd64 node:22-alpine". Skip any token that
+    // looks like a flag; the first remaining token is the image.
+    const tokens = m[1].trim().split(/\s+/).filter((t) => !t.startsWith("--"));
+    const image = tokens[0];
+    if (!image) return;
     const colon = image.lastIndexOf(":");
     const tag = colon === -1 ? null : image.slice(colon + 1);
     if (tag === null) {
