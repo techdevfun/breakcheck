@@ -9,7 +9,11 @@
 import fs from "node:fs";
 import path from "node:path";
 
-export const VERSION = "0.1.0";
+export const VERSION = "0.2.0";
+// Patterns version: the vintage of the ruleset this build checks against.
+// Bump it in the same commit as any rule/knowledge-base change (format
+// YYYY.MM; the `v` prefix is display-only in output).
+export const PATTERNS_VERSION = "2026.10";
 
 const SKIP_DIRS = new Set([
   ".git",
@@ -281,7 +285,71 @@ function checkWorkflow(root, file, findings) {
     const uses = raw.match(/uses:\s*(\S+)/);
     if (uses) {
       const ref = uses[1].trim().replace(/['"]/g, "");
-      if (!ref.startsWith("./") && !ref.startsWith("docker://")) {
+      if (ref.startsWith("./")) {
+        // Local action: repo-local, nothing to pin — exempt.
+      } else if (ref.startsWith("docker://")) {
+        // Docker action: follow the tool's Dockerfile-base tag policy.
+        // (Before 0.2.0 docker:// refs were silently skipped.)
+        const rest = ref.slice("docker://".length);
+        if (rest === "") {
+          findings.push(
+            finding(
+              "error",
+              "unpinned-action",
+              rel(root, file),
+              lineNo,
+              `Action 'docker://' has no image`,
+              "Use a full image reference, e.g. 'docker://alpine:3.19'",
+            ),
+          );
+        } else if (rest.includes("@")) {
+          // Digest-pinned image — immutable, no finding.
+        } else {
+          // Parse the tag from the last path segment only, so a registry
+          // port (myreg:5000/img:3) is not mistaken for the tag.
+          const lastSeg = rest.slice(rest.lastIndexOf("/") + 1);
+          const colon = lastSeg.lastIndexOf(":");
+          if (colon === -1) {
+            findings.push(
+              finding(
+                "error",
+                "unpinned-action",
+                rel(root, file),
+                lineNo,
+                `Action '${ref}' has no tag (defaults to latest)`,
+                "Pin the action image tag, e.g. 'docker://alpine:3.19'",
+              ),
+            );
+          } else {
+            const tag = lastSeg.slice(colon + 1);
+            if (tag === "latest") {
+              findings.push(
+                finding(
+                  "error",
+                  "unpinned-action",
+                  rel(root, file),
+                  lineNo,
+                  `Action '${ref}' uses the mutable ':latest' tag`,
+                  "Pin the action image tag, e.g. 'docker://alpine:3.19'",
+                ),
+              );
+            } else if (/^\d+$/.test(tag)) {
+              const image = rest.slice(0, rest.lastIndexOf(":"));
+              findings.push(
+                finding(
+                  "warn",
+                  "mutable-tag",
+                  rel(root, file),
+                  lineNo,
+                  `Docker action image '${image}' pins only a major version — the tag can move`,
+                  "Pin a full version, e.g. 'docker://alpine:3.19.0'",
+                ),
+              );
+            }
+            // Any other tag is a full version pin — clean.
+          }
+        }
+      } else {
         const at = ref.lastIndexOf("@");
         if (at === -1) {
           findings.push(
@@ -477,6 +545,9 @@ function checkCodeFile(root, file, findings) {
 export function scanProject(rootDir) {
   const root = path.resolve(rootDir);
   const findings = [];
+  // Captured once at scan start (UTC) so the scope line is deterministic
+  // across machines and CI for a single run.
+  const scannedAt = new Date().toISOString().slice(0, 10);
   const files = walk(root, []);
   let scanned = 0;
   for (const file of files) {
@@ -507,7 +578,7 @@ export function scanProject(rootDir) {
       scanned++;
     }
   }
-  return { findings, scanned };
+  return { findings, scanned, scannedAt };
 }
 
 export function summarize(findings) {
@@ -520,7 +591,11 @@ export function summarize(findings) {
   return { errors, warnings };
 }
 
-export function formatText(findings, scanned) {
+export function formatText(
+  findings,
+  scanned,
+  scannedAt = new Date().toISOString().slice(0, 10),
+) {
   const lines = [];
   for (const f of findings) {
     const tag = f.severity === "error" ? "ERROR" : "WARN ";
@@ -532,13 +607,37 @@ export function formatText(findings, scanned) {
   lines.push(
     `Summary: ${errors} error(s), ${warnings} warning(s), ${scanned} file(s) scanned.`,
   );
+  // Scope line: states the tool's universe in-band, on every run.
+  // `scanned` is the count of files a check ran on, not every walked file.
+  if (errors === 0 && warnings === 0) {
+    lines.push(
+      `No known patterns in ${scanned} files (patterns v${PATTERNS_VERSION}, scanned ${scannedAt}).`,
+    );
+  } else {
+    lines.push(
+      `Scope: ${scanned} files scanned (patterns v${PATTERNS_VERSION}, scanned ${scannedAt}).`,
+    );
+  }
   return lines.join("\n");
 }
 
-export function formatJson(findings, scanned) {
+export function formatJson(
+  findings,
+  scanned,
+  scannedAt = new Date().toISOString().slice(0, 10),
+) {
   const { errors, warnings } = summarize(findings);
   return JSON.stringify(
-    { summary: { errors, warnings, filesScanned: scanned }, findings },
+    {
+      summary: {
+        errors,
+        warnings,
+        filesScanned: scanned,
+        patternsVersion: PATTERNS_VERSION,
+        scannedAt,
+      },
+      findings,
+    },
     null,
     2,
   );
