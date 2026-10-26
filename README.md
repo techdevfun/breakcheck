@@ -65,9 +65,38 @@ node bin/breakcheck.js check --path examples/broken
 [WARN ] unpinned-requirement: Requirement 'flask' is not pinned with '==' (requirements.txt:2)
        fix: Pin to an exact version, e.g. 'flask==3.0.0'
 Summary: 10 error(s), 3 warning(s), 7 file(s) scanned.
+Scope: 7 files scanned (patterns v2026.10, scanned 2026-10-26).
 ```
 
-`examples/clean/` passes with `Summary: 0 error(s), 0 warning(s), 6 file(s) scanned.`
+`examples/clean/` passes with:
+
+```
+Summary: 0 error(s), 0 warning(s), 6 file(s) scanned.
+No known patterns in 6 files (patterns v2026.10, scanned 2026-10-26).
+```
+
+## What a clean result means
+
+A clean result means **no known patterns were found** — not that the project
+is safe. Four things the scope line is telling you:
+
+- **No known patterns, not no problems.** The tool only knows the patterns
+  in its ruleset; a clean run says nothing about issues outside that list.
+- **N = files the tool ran a check on**, not every file in the directory.
+  Unscanned file types don't count toward N.
+- **The patterns version is the ruleset vintage** — it changes only when a
+  rule changes, so two runs with the same version checked the same rules.
+- **The date is the scan date**, a point-in-time claim. It does not update
+  when the repo grows, so an old paste does not describe the current repo.
+
+As noted below, the tool scans locally and never phones home, so it can't
+check live advisories — pair it with your package manager's audit for CVEs.
+
+**Behavior change in 0.2.0:** `docker://` action references used to be
+silently skipped. They are now checked like Dockerfile base images: no tag
+or `:latest` is an error, a major-only tag is a warning, other tags and
+digests are clean. Every run also prints a scope line after the Summary
+line (see above).
 
 ## Install
 
@@ -114,7 +143,7 @@ at/above `--fail-on` · `2` bad arguments / unreadable directory.
 | `package.json` | Deprecated deps (`request`, `node-sass`, `tslint`, `babel-eslint`, `core-js` 2.x, …), `moment` maintenance-mode warning, floating versions (`*`, `latest`, `>=`), `engines.node` on an EOL Node, missing `engines.node` |
 | `requirements.txt` | Deprecated Python packages (`pycrypto`, `nose`), unpinned requirements (no `==`) |
 | `pyproject.toml` | `requires-python` allowing EOL Python, missing `requires-python` |
-| `.github/workflows/*.yml` | Actions pinned to a mutable tag/branch instead of a full commit SHA, `permissions: write-all`, broad `contents: write`, `pull_request_target` (runs with secrets — never run untrusted PR code under it), hardcoded token-shaped secrets |
+| `.github/workflows/*.yml` | Actions pinned to a mutable tag/branch instead of a full commit SHA, `permissions: write-all`, broad `contents: write`, `pull_request_target` (runs with secrets — never run untrusted PR code under it), hardcoded token-shaped secrets. Local actions (`./.github/actions/...`) are repo-local and not flagged. `docker://` images: no tag or `:latest` is an error, a major-only tag is a warning, other tags and digests are clean |
 | `Dockerfile` | Base image with no tag or `:latest`, major-only tag (mutable) |
 | Code (`.js/.ts/.py`) | Removed APIs: browser `XSLTProcessor`, Python `imp`, `collections.Mapping`-style aliases, `distutils` |
 
