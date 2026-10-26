@@ -77,12 +77,12 @@ if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) {
   process.exit(2);
 }
 
-const { findings, scanned } = scanProject(dir);
+const { findings, scanned, scannedAt } = scanProject(dir);
 const { errors, warnings } = summarize(findings);
 if (format === "json") {
-  console.log(formatJson(findings, scanned));
+  console.log(formatJson(findings, scanned, scannedAt));
 } else {
-  console.log(formatText(findings, scanned));
+  console.log(formatText(findings, scanned, scannedAt));
 }
 if (errors > 0) process.exit(1);
 if (failOn === "warn" && warnings > 0) process.exit(1);
