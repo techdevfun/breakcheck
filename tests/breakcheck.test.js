@@ -146,7 +146,7 @@ test("--help and --version exit 0", () => {
   assert.match(help.stdout, /Usage:/);
   const version = spawnSync(process.execPath, [BIN, "--version"], { encoding: "utf8" });
   assert.equal(version.status, 0);
-  assert.match(version.stdout, /breakcheck 0\.1\.0/);
+  assert.match(version.stdout, /breakcheck 0\.2\.0/);
 });
 
 test("Dockerfile major-only tag is a warning, full pin is clean", () => {
@@ -202,4 +202,164 @@ test("missing engines.node is a warning; missing requires-python is a warning", 
   assert.equal(r.status, 0);
   assert.match(r.stdout, /missing-engines/);
   assert.match(r.stdout, /missing-requires-python/);
+});
+
+const WORKFLOW_LOCAL = (uses) =>
+  `name: CI\non: [push]\njobs:\n  test:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: ${uses}\n`;
+
+test("local action path is exempt, no unpinned-action", () => {
+  const dir = tmpProject({
+    "package.json": CLEAN_PKG,
+    ".github/workflows/ci.yml": WORKFLOW_LOCAL("./.github/actions/x"),
+  });
+  const r = run(dir);
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.doesNotMatch(r.stdout, /unpinned-action/);
+});
+
+test("quoted local action path is exempt, no unpinned-action", () => {
+  const dir = tmpProject({
+    "package.json": CLEAN_PKG,
+    ".github/workflows/ci.yml": WORKFLOW_LOCAL("'./.github/actions/x'"),
+  });
+  const r = run(dir);
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.doesNotMatch(r.stdout, /unpinned-action/);
+});
+
+test("local path does not mask a bad remote action", () => {
+  const dir = tmpProject({
+    "package.json": CLEAN_PKG,
+    ".github/workflows/ci.yml":
+      `name: CI\non: [push]\njobs:\n  test:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: ./.github/actions/x\n      - uses: actions/checkout@v4\n`,
+  });
+  const r = run(dir);
+  assert.equal(r.status, 1);
+  assert.match(r.stdout, /unpinned-action/);
+  assert.match(r.stdout, /actions\/checkout@v4/);
+  assert.doesNotMatch(r.stdout, /\.github\/actions\/x.*unpinned-action|unpinned-action.*\.github\/actions\/x/);
+});
+
+test("docker:// with no tag is an error", () => {
+  const dir = tmpProject({
+    "package.json": CLEAN_PKG,
+    ".github/workflows/ci.yml": WORKFLOW_LOCAL("docker://alpine"),
+  });
+  const r = run(dir);
+  assert.equal(r.status, 1);
+  assert.match(r.stdout, /unpinned-action/);
+  assert.match(r.stdout, /has no tag/);
+});
+
+test("docker:// with :latest is an error", () => {
+  const dir = tmpProject({
+    "package.json": CLEAN_PKG,
+    ".github/workflows/ci.yml": WORKFLOW_LOCAL("docker://alpine:latest"),
+  });
+  const r = run(dir);
+  assert.equal(r.status, 1);
+  assert.match(r.stdout, /unpinned-action/);
+  assert.match(r.stdout, /:latest/);
+});
+
+test("docker:// with full tag is clean", () => {
+  const dir = tmpProject({
+    "package.json": CLEAN_PKG,
+    ".github/workflows/ci.yml": WORKFLOW_LOCAL("docker://alpine:3.19"),
+  });
+  const r = run(dir);
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.doesNotMatch(r.stdout, /unpinned-action/);
+  assert.doesNotMatch(r.stdout, /mutable-tag/);
+});
+
+test("docker:// with digest is clean", () => {
+  const dir = tmpProject({
+    "package.json": CLEAN_PKG,
+    ".github/workflows/ci.yml": WORKFLOW_LOCAL(
+      `docker://alpine@sha256:${"a".repeat(64)}`,
+    ),
+  });
+  const r = run(dir);
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.doesNotMatch(r.stdout, /unpinned-action/);
+});
+
+test("docker:// with major-only tag warns but does not fail", () => {
+  const dir = tmpProject({
+    "package.json": CLEAN_PKG,
+    ".github/workflows/ci.yml": WORKFLOW_LOCAL("docker://alpine:3"),
+  });
+  const r = run(dir);
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.match(r.stdout, /mutable-tag/);
+});
+
+test("docker:// with empty image is an error", () => {
+  const dir = tmpProject({
+    "package.json": CLEAN_PKG,
+    ".github/workflows/ci.yml": WORKFLOW_LOCAL("docker://"),
+  });
+  const r = run(dir);
+  assert.equal(r.status, 1);
+  assert.match(r.stdout, /unpinned-action/);
+  assert.match(r.stdout, /has no image/);
+});
+
+test("clean run prints No known patterns scope line after Summary", () => {
+  const dir = tmpProject({ "package.json": CLEAN_PKG });
+  const r = run(dir);
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.match(r.stdout, /Summary: 0 error\(s\), 0 warning\(s\)/);
+  assert.match(
+    r.stdout,
+    /No known patterns in \d+ files \(patterns v\d{4}\.\d{2}, scanned \d{4}-\d{2}-\d{2}\)\./,
+  );
+});
+
+test("non-clean run prints Scope line, not No known patterns", () => {
+  const dir = tmpProject({
+    "package.json": JSON.stringify({
+      dependencies: { request: "^2.88.0" },
+      engines: { node: ">=20" },
+    }),
+  });
+  const r = run(dir);
+  assert.equal(r.status, 1);
+  assert.match(
+    r.stdout,
+    /Scope: \d+ files scanned \(patterns v\d{4}\.\d{2}, scanned \d{4}-\d{2}-\d{2}\)\./,
+  );
+  assert.doesNotMatch(r.stdout, /No known patterns/);
+});
+
+test("JSON summary carries patternsVersion and scannedAt", () => {
+  const dir = tmpProject({ "package.json": CLEAN_PKG });
+  const r = run(dir, ["--format", "json"]);
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  const data = JSON.parse(r.stdout);
+  assert.equal(data.summary.patternsVersion, "2026.10");
+  assert.match(data.summary.scannedAt, /^\d{4}-\d{2}-\d{2}$/);
+  assert.equal(data.summary.errors, 0);
+  assert.equal(data.summary.filesScanned, 1);
+});
+
+test("scope line N counts checked files only, not unscanned files", () => {
+  const dir = tmpProject({
+    "package.json": CLEAN_PKG,
+    Dockerfile: "FROM node:22-alpine\n",
+    "notes.txt": "just notes\n",
+    "README.md": "# hi\n",
+  });
+  const r = run(dir);
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.match(r.stdout, /No known patterns in 2 files \(/);
+});
+
+test("--version outputs breakcheck 0.2.0", () => {
+  const version = spawnSync(process.execPath, [BIN, "--version"], {
+    encoding: "utf8",
+  });
+  assert.equal(version.status, 0);
+  assert.match(version.stdout, /breakcheck 0\.2\.0/);
 });
