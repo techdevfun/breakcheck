@@ -65,14 +65,14 @@ node bin/breakcheck.js check --path examples/broken
 [WARN ] unpinned-requirement: Requirement 'flask' is not pinned with '==' (requirements.txt:2)
        fix: Pin to an exact version, e.g. 'flask==3.0.0'
 Summary: 10 error(s), 3 warning(s), 7 file(s) scanned.
-Scope: 7 files scanned (patterns v2026.10, scanned 2026-10-26).
+Scope: 7 files scanned (patterns v2026.11, scanned 2026-10-26).
 ```
 
 `examples/clean/` passes with:
 
 ```
 Summary: 0 error(s), 0 warning(s), 6 file(s) scanned.
-No known patterns in 6 files (patterns v2026.10, scanned 2026-10-26).
+No known patterns in 6 files (patterns v2026.11, scanned 2026-10-26).
 ```
 
 ## What a clean result means
