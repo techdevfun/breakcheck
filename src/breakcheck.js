@@ -13,7 +13,7 @@ export const VERSION = "0.2.0";
 // Patterns version: the vintage of the ruleset this build checks against.
 // Bump it in the same commit as any rule/knowledge-base change (format
 // YYYY.MM; the `v` prefix is display-only in output).
-export const PATTERNS_VERSION = "2026.10";
+export const PATTERNS_VERSION = "2026.11";
 
 const SKIP_DIRS = new Set([
   ".git",
@@ -444,8 +444,11 @@ function checkDockerfile(root, file, findings) {
     const tokens = m[1].trim().split(/\s+/).filter((t) => !t.startsWith("--"));
     const image = tokens[0];
     if (!image) return;
-    const colon = image.lastIndexOf(":");
-    const tag = colon === -1 ? null : image.slice(colon + 1);
+    // Parse the tag from the last path segment only, so a registry port
+    // (myreg:5000/node with no tag) is not mistaken for a tag.
+    const lastSeg = image.slice(image.lastIndexOf("/") + 1);
+    const colon = lastSeg.lastIndexOf(":");
+    const tag = colon === -1 ? null : lastSeg.slice(colon + 1);
     if (tag === null) {
       findings.push(
         finding(
