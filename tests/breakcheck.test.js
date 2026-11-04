@@ -333,12 +333,37 @@ test("non-clean run prints Scope line, not No known patterns", () => {
   assert.doesNotMatch(r.stdout, /No known patterns/);
 });
 
+test("Dockerfile: registry port is not mistaken for a tag", () => {
+  const badDir = tmpProject({
+    "package.json": CLEAN_PKG,
+    Dockerfile: "FROM myreg:5000/node\n",
+  });
+  const r = run(badDir);
+  assert.equal(r.status, 1, r.stdout + r.stderr);
+  assert.match(r.stdout, /unpinned-base/);
+  assert.match(r.stdout, /has no tag/);
+  const tagDir = tmpProject({
+    "package.json": CLEAN_PKG,
+    Dockerfile: "FROM myreg:5000/node:22-alpine\n",
+  });
+  const rt = run(tagDir);
+  assert.equal(rt.status, 0, rt.stdout + rt.stderr);
+  assert.doesNotMatch(rt.stdout, /unpinned-base/);
+  const majorDir = tmpProject({
+    "package.json": CLEAN_PKG,
+    Dockerfile: "FROM myreg:5000/node:22\n",
+  });
+  const rm = run(majorDir);
+  assert.equal(rm.status, 0, rm.stdout + rm.stderr);
+  assert.match(rm.stdout, /mutable-tag/);
+});
+
 test("JSON summary carries patternsVersion and scannedAt", () => {
   const dir = tmpProject({ "package.json": CLEAN_PKG });
   const r = run(dir, ["--format", "json"]);
   assert.equal(r.status, 0, r.stdout + r.stderr);
   const data = JSON.parse(r.stdout);
-  assert.equal(data.summary.patternsVersion, "2026.10");
+  assert.equal(data.summary.patternsVersion, "2026.11");
   assert.match(data.summary.scannedAt, /^\d{4}-\d{2}-\d{2}$/);
   assert.equal(data.summary.errors, 0);
   assert.equal(data.summary.filesScanned, 1);
