@@ -48,6 +48,8 @@ node bin/breakcheck.js check --path examples/broken
        fix: Pin the base image, e.g. 'node:22-alpine'
 [ERROR] removed-api: XSLT in the browser is being removed from Chrome and Edge — XSLTProcessor will stop working (app.js:2)
        fix: Move the transform to the server, or pre-render the output at build time
+[ERROR] removed-api: The 'imp' module was removed in Python 3.12 (legacy.py:1)
+       fix: Use 'importlib' instead
 [ERROR] removed-api: The 'imp' module was removed in Python 3.12 (legacy.py:3)
        fix: Use 'importlib' instead
 [WARN ] floating-version: Dependency 'foo' uses floating version '*' — installs are not reproducible (package.json:1)
@@ -64,7 +66,7 @@ node bin/breakcheck.js check --path examples/broken
        fix: Replace with 'pycryptodome'
 [WARN ] unpinned-requirement: Requirement 'flask' is not pinned with '==' (requirements.txt:2)
        fix: Pin to an exact version, e.g. 'flask==3.0.0'
-Summary: 10 error(s), 3 warning(s), 7 file(s) scanned.
+Summary: 11 error(s), 3 warning(s), 7 file(s) scanned.
 Scope: 7 files scanned (patterns v2026.11, scanned 2026-10-26).
 ```
 
