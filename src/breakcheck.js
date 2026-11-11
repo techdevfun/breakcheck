@@ -505,7 +505,16 @@ function checkCodeFile(root, file, findings) {
         );
       }
     } else {
-      if (/(^|\W)imp\./.test(raw)) {
+      // `imp.` usage, plus the import itself: a file that only says
+      // `import imp` (or `from imp import ...`) with no `imp.` call was
+      // previously missed entirely, even though the import alone breaks
+      // on Python 3.12. One finding per line; the \b guards keep
+      // `import important` / `from important import ...` clean.
+      if (
+        /(^|\W)imp\./.test(raw) ||
+        /^\s*import\s+[^#]*\bimp\b/.test(raw) ||
+        /^\s*from\s+imp\s+import\b/.test(raw)
+      ) {
         findings.push(
           finding(
             "error",
