@@ -131,6 +131,25 @@ test("Python: pycrypto error, unpinned warn, imp/distutils/collections removed-a
   assert.match(r.stdout, /removed-api/); // distutils + Mapping
 });
 
+test("bare 'import imp' is flagged even with no imp. usage", () => {
+  const dir = tmpProject({
+    "package.json": CLEAN_PKG,
+    "old.py": "import imp\nfrom imp import load_source\n",
+  });
+  const r = run(dir);
+  assert.equal(r.status, 1, r.stdout + r.stderr);
+  assert.match(r.stdout, /removed-api/);
+  assert.match(r.stdout, /old\.py:1/);
+  assert.match(r.stdout, /old\.py:2/);
+  // Near-miss names must stay clean: 'important' is not the 'imp' module.
+  const cleanDir = tmpProject({
+    "package.json": CLEAN_PKG,
+    "ok.py": "import important\nfrom important import thing\nimport simple\n",
+  });
+  const rc = run(cleanDir);
+  assert.equal(rc.status, 0, rc.stdout + rc.stderr);
+});
+
 test("missing directory exits 2, bad flag exits 2, bad format exits 2", () => {
   assert.equal(run("/nonexistent-dir-xyz").status, 2);
   const dir = tmpProject({ "package.json": CLEAN_PKG });
